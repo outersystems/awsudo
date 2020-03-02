@@ -49,7 +49,7 @@ def parseArgs():
     if not (args):
         usage()
 
-    profile = None
+    profile = os.environ.get('AWS_PROFILE')
     for (option, value) in options:
         if option == '-u':
             profile = value
