@@ -25,6 +25,9 @@ class CredentialResolver(object):
             if value:
                 env[key] = value
 
+        if profile:
+            set('AWS_PROFILE', profile)
+
         set('AWS_ACCESS_KEY_ID', creds.access_key)
         set('AWS_SECRET_ACCESS_KEY', creds.secret_key)
 
