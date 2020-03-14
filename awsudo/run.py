@@ -88,7 +88,7 @@ def main():
         print("renew")
         session_creds = fetch_session_token()
 
-        with open(cache_dir_path + cache_file, "w+") as json_file:
+        with open(cache_dir_path + cache_file, "w") as json_file:
             json.dump(session_creds, json_file, indent=4, sort_keys=True, default=str)
 
 
