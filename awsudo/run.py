@@ -7,7 +7,8 @@ import datetime
 import dateutil.parser
 import pytz
 import boto3
-
+import botocore
+import pdb
 
 
 cache_dir = "~/.aws/awsudo/cache/"
@@ -35,14 +36,23 @@ def fetch_session_token():
 
     config = configparser.ConfigParser()
     config.read([os.path.expanduser("~/.aws/config")])
-    durationSeconds = config.get("default", 'duration_seconds')
+    durationSeconds = int(config.get("default", 'duration_seconds'))
     mfaSerial = config.get("default", 'mfa_serial')
 
     sts_client = boto3.client('sts')
 
-    mfaToken = getpass.getpass(prompt="Enter MFa token: ")
+    try:
+        mfaToken = getpass.getpass(prompt="Enter MFa token: ")
+    except KeyboardInterrupt as e:
+        print(e)
+        exit(1)
 
-    sessionCreds = sts_client.get_session_token(durationSeconds, mfaSerial, mfaToken)
+    try:
+        return sts_client.get_session_token(DurationSeconds=durationSeconds, SerialNumber=mfaSerial, TokenCode=mfaToken)
+    except botocore.exceptions.ClientError as e:
+        print ("Error to get session token. MFA Errorneous?")
+        exit(1)
+
 
 def main():
     cache_dir_path = os.path.expanduser(cache_dir)
@@ -51,25 +61,42 @@ def main():
     # Load session creds
     if os.path.isfile(cache_dir_path + cache_file):
         with open(cache_dir_path + cache_file) as json_file:
-            session_creds = json.load(json_file)
+            try:
+                session_creds = json.load(json_file)
+            except json.decoder.JSONDecodeError as e:
+                print(e)
+                exit(1)
+    else:
+        session_creds = {}
+        with open(cache_dir_path + cache_file, "w+") as json_file:
+            json.dump(session_creds, json_file)
 
     # Should we refresh session creds?
-    if data.has_key('Expiration')
-        expiration_utc = dateutil.parser.isoparse(data['Expiration'])
+    if 'Credentials' in session_creds.keys():
+        expiration_utc = dateutil.parser.isoparse(session_creds['Credentials']['Expiration'])
         now_utc = pytz.utc.localize(datetime.datetime.utcnow())
         max_accepted_timedelta = datetime.timedelta(hours=1)
         
         if (expiration_utc - now_utc) <= max_accepted_timedelta:
-            #renew
+            print("renew")
+            session_creds = fetch_session_token()
+            with open(cache_dir_path + cache_file) as json_file:
+                json.dump(session_creds, json_file)
+        else:
+            print("Cache valid")
     else:
-        #renew        
+        print("renew")
+        session_creds = fetch_session_token()
+
+        with open(cache_dir_path + cache_file, "w+") as json_file:
+            json.dump(session_creds, json_file, indent=4, sort_keys=True, default=str)
+
 
     # here session creds are fine.
 
 
 # If outdated - 1h:
 #   Query AWS
-
 
 
 # import json
