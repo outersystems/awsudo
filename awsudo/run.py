@@ -1,5 +1,5 @@
 #!/bin/env python3
-import awsudo.main
+
 import os
 import pathlib
 import json
@@ -8,25 +8,79 @@ import dateutil.parser
 import pytz
 import boto3
 import botocore
-
+import getopt
+import sys
+import configparser
 
 cache_dir = "~/.aws/awsudo/cache/"
 user_cache_file = "user.session.json"
 
-#awsudo.main.main()
+# import awsudo.main
+# awsudo.main.main()
+
+def usage():
+    sys.stderr.write('''\
+Usage: awsudo [-u USER] [--] COMMAND [ARGS] [...]
+
+Sets AWS environment variables and then executes the COMMAND.
+''')
+    exit(1)
+
+
+def parseArgs():
+    try:
+        options, args = getopt.getopt(sys.argv[1:], 'u:')
+    except getopt.GetoptError as err:
+        # print help information and exit:
+        print(err)
+        usage()
+
+    if not (args):
+        usage()
+
+    profile = os.environ.get('AWS_PROFILE')
+    for (option, value) in options:
+        if option == '-u':
+            profile = value
+        else:
+            raise Exception("unknown option %s" % (option,))
+
+    return profile, args
+
+
+def clean_env():
+    """Delete from the environment any AWS or BOTO configuration.
+
+    Since it's this program's job to manage this environment configuration, we
+    can blow all this away to avoid any confusion.
+    """
+    for k in list(os.environ.keys()):
+        if k.startswith('AWS_') or k.startswith('BOTO_'):
+            del os.environ[k]
+
+
+def run(args, extraEnv):
+    env = os.environ.copy()
+    env.update(extraEnv)
+    try:
+        os.execvpe(args[0], args, env)
+    except OSError as e:
+        if e.errno != errno.ENOENT:
+            raise
+        raise SystemExit("%s: command not found" % (args[0],))
+
 
 def fetch_user_token():
     """Query AWS to get temporary credentials of a user with an MFA."""
-    import getpass
-    import configparser
 
     config = configparser.ConfigParser()
     config.read([os.path.expanduser("~/.aws/config")])
     
-    durationSeconds = int(config.get("default", 'duration_seconds'))
+    duration_string = config.get("profile default", 'duration_seconds')
+    durationSeconds = int(duration_string)
 
     # Using the mfa_serial from the profile named default
-    mfaSerial = config.get("default", 'mfa_serial')
+    mfaSerial = config.get("profile default", 'mfa_serial')
 
     sts_client = boto3.client('sts')
 
@@ -42,9 +96,11 @@ def fetch_user_token():
         print ("Error to get session token. MFA Errorneous?")
         exit(1)
 
+
 def fetch_role_session_token():
     """Query AWS to get temporary credentials for a role, derived from user session token."""
     print ("stuff")
+
 
 def get_last_session(cache_dir, cache_file):
     """Return the current session from cache_dir/cache_file.
@@ -65,6 +121,7 @@ def get_last_session(cache_dir, cache_file):
             json.dump(session_creds, json_file)
     
     return session_creds
+
 
 def is_session_valid(session_creds):
     """Check if a session is still valid, based on its expiration date"""
@@ -88,96 +145,90 @@ def refresh_session(filename):
 
     return session_creds
 
-def fetch_assume_role_creds(user_session_token):
-    print("assume role!")
 
-    # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/core/session.html
-    # assume_role_session = boto3.session.Session(
-    #     aws_access_key_id=None,
-    #     aws_secret_access_key=None,
-    #     aws_session_token=None,
-    #     region_name=None,
-    #     botocore_session=None,
-    #     profile_name=None)
+def fetch_assume_role_creds(role_arn, user_session_token):
+    import configparser
 
-    # user_session = boto3.session.Session(
-    #     aws_access_key_id=user_session_token['Credentials']['AccessKeyId'],
-    #     aws_secret_access_key=user_session_token['Credentials']['SecretAccessKey'],
-    #     aws_session_token=user_session_token['Credentials']['SessionToken'],
-    #     region_name=None,
-    #     botocore_session=None,
-    #     profile_name=None)
-
-    # https://stackoverflow.com/questions/42809096/difference-in-boto3-between-resource-client-and-session
-    # https://stackoverflow.com/questions/45981950/how-to-specify-credentials-when-connecting-to-boto3-s3
-    c = boto3.client('sts',
-        aws_access_key_id=,
-        aws_secret_access_key=
-        region_name=)
-
-    # Then         assume_role_object = sts_connection.assume_role(RoleArn=arn, RoleSessionName=ARN_ROLE_SESSION_NAME,DurationSeconds=3600
-    # https://stackoverflow.com/questions/44171849/aws-boto3-assumerole-example-which-includes-role-usage
-
-    role_arn = 'arn:aws:iam::313341868584:role/ec2'
-    # fetcher = botocore.credentials.AssumeRoleCredentialFetcher(
-    #     client_creator = user_session._session.create_client,
-    #     source_credentials = user_session.get_credentials(),
-    #     role_arn = role_arn,
-    #     extra_args = {
-    #     #    'RoleSessionName': None # set this if you want something non-default
-    #     }
-    # )
-    # creds = botocore.credentials.DeferredRefreshableCredentials(
-    #     method = 'assume-role',
-    #     refresh_using = fetcher.fetch_credentials,
-    #     time_fetcher = lambda: datetime.datetime.now(tzlocal())
-    # )
-    # botocore_session = botocore.session.Session()
-    # botocore_session._credentials = creds
-    # # return boto3.Session(botocore_session = botocore_session)
-
-    # # ses
-
-    boto.Credentials.get_credentials()
+    config = configparser.ConfigParser()
+    config.read([os.path.expanduser("~/.aws/config")])
     
-# Current hypothesis: https://stackoverflow.com/questions/44171849/aws-boto3-assumerole-example-which-includes-role-usage
-# usage:
-# session = assumed_role_session('arn:aws:iam::ACCOUNTID:role/ROLE_NAME')
+    duration_string = config.get("profile default", 'duration_seconds')
 
+    sts = boto3.client('sts',
+        aws_access_key_id=user_session_token['Credentials']['AccessKeyId'],
+        aws_secret_access_key=user_session_token['Credentials']['SecretAccessKey'],
+        aws_session_token=user_session_token['Credentials']['SessionToken'],
+        region_name="eu-central-1")
 
+    role_session = sts.assume_role(
+        RoleArn=role_arn,
+        RoleSessionName="ARN_ROLE_SESSION_NAME",
+        DurationSeconds=3600)
 
+    return(role_session['Credentials'])
 
+def get_from_profile(profile):
 
-
-
-    #print(assume_role_session)
-    # creds = assume_role_session.get_credentials()
-    # print(assume_role_session.get_credentials())
+    config = configparser.ConfigParser()
+    config.read([os.path.expanduser("~/.aws/config")])
     
-    # client = boto3.client('sts', 'us-west-2')
+    try:
+        role_arn = config.get("profile %s" % profile, 'role_arn')
+    except configparser.NoSectionError as e:
+        print("Profile %s not found in config file." % profile)
+        exit(1)
+    except configparser.NoOptionError as e:
+        role_arn = None
 
+    try:
+        region   = config.get("profile %s" % profile, 'region')
+    except configparser.NoOptionError as e:
+        region = None
+    
+    return(role_arn, region)
 
+def create_aws_env_var(profile, region, creds):
+    
+    env = {}
+    env['AWS_ACCESS_KEY_ID']     = creds['AccessKeyId']
+    env['AWS_SECRET_ACCESS_KEY'] = creds['SecretAccessKey']
+    env['AWS_SESSION_TOKEN']     = creds['SessionToken']
+    env['AWS_SECURITY_TOKEN']    = creds['SessionToken']
+    env['AWS_DEFAULT_REGION']    = region
+    env['AWS_PROFILE']           = profile
 
-    response = user_session.assume_role(
-        RoleArn='arn:aws:iam::313341868584:role/ec2',
-        DurationSeconds=900)
+    return(env)
 
-    # tmp_credentials = {
-    #         'sessionId': response['Credentials']['AccessKeyId'],
-    #         'sessionKey': response['Credentials']['SecretAccessKey'],
-    #         'sessionToken':response['Credentials']['SessionToken']
-    #         }
+def is_arn_role(arn):
+    import re
 
-    print("So?")
+    if arn:
+        pattern = re.compile(":role/")
+        return(pattern.search(arn))
+    
+    return False
 
 def main():
+
+    profile, args = parseArgs()
+    clean_env()
 
     session_creds = get_last_session(cache_dir, user_cache_file)
     
     if not is_session_valid(session_creds):
         session_creds = refresh_session(cache_dir + user_cache_file)
 
-    fetch_assume_role_creds(session_creds)
+    role_arn, region = get_from_profile(profile)
+
+
+    if is_arn_role(role_arn):
+        role_creds = fetch_assume_role_creds(role_arn, session_creds)
+    else:
+        role_creds = session_creds['Credentials']
+
+    env = create_aws_env_var(profile, region, role_creds)
+
+    run(args, env)
 
 if __name__ == '__main__':
     main()
