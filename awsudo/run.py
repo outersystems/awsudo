@@ -12,6 +12,7 @@ import getopt
 import sys
 import configparser
 
+aws_config_file = "~/.aws/config"
 cache_dir = "~/.aws/awsudo/cache/"
 user_cache_file = "user.session.json"
 
@@ -74,7 +75,7 @@ def fetch_user_token():
     """Query AWS to get temporary credentials of a user with an MFA."""
 
     config = configparser.ConfigParser()
-    config.read([os.path.expanduser("~/.aws/config")])
+    config.read([os.path.expanduser(aws_config_file)])
     
     duration_string = config.get("profile default", 'duration_seconds')
     durationSeconds = int(duration_string)
@@ -82,7 +83,7 @@ def fetch_user_token():
     # Using the mfa_serial from the profile named default
     mfaSerial = config.get("profile default", 'mfa_serial')
 
-    sts_client = boto3.client('sts')
+    sts = boto3.client('sts')
 
     try:
         mfaToken = getpass.getpass(prompt="Enter MFA token: ")
@@ -91,7 +92,7 @@ def fetch_user_token():
         exit(1)
 
     try:
-        return sts_client.get_session_token(DurationSeconds=durationSeconds, SerialNumber=mfaSerial, TokenCode=mfaToken)
+        return sts.get_session_token(DurationSeconds=durationSeconds, SerialNumber=mfaSerial, TokenCode=mfaToken)
     except botocore.exceptions.ClientError as e:
         print ("Error to get session token. MFA Errorneous?")
         exit(1)
@@ -146,11 +147,11 @@ def refresh_session(filename):
     return session_creds
 
 
-def fetch_assume_role_creds(role_arn, user_session_token):
+def fetch_assume_role_creds(user_session_token, profile_config):
     import configparser
 
     config = configparser.ConfigParser()
-    config.read([os.path.expanduser("~/.aws/config")])
+    config.read([os.path.expanduser(aws_config_file)])
     
     duration_string = config.get("profile default", 'duration_seconds')
 
@@ -158,38 +159,51 @@ def fetch_assume_role_creds(role_arn, user_session_token):
         aws_access_key_id=user_session_token['Credentials']['AccessKeyId'],
         aws_secret_access_key=user_session_token['Credentials']['SecretAccessKey'],
         aws_session_token=user_session_token['Credentials']['SessionToken'],
-        region_name="eu-central-1")
+        region_name=profile_config['region'])
+
+    if profile_config['duration_seconds']:
+        duration = int(profile_config['duration_seconds'])
+    else:
+        duration = 3600
 
     role_session = sts.assume_role(
-        RoleArn=role_arn,
-        RoleSessionName="ARN_ROLE_SESSION_NAME",
-        DurationSeconds=3600)
+        RoleArn=profile_config['role_arn'],
+        RoleSessionName="awsudo",
+        DurationSeconds=duration)
 
     return(role_session['Credentials'])
 
-def get_from_profile(profile):
+
+def get_profile_config(profile):
 
     config = configparser.ConfigParser()
-    config.read([os.path.expanduser("~/.aws/config")])
+    config.read([os.path.expanduser(aws_config_file)])
     
+    config_element = dict()
     try:
-        role_arn = config.get("profile %s" % profile, 'role_arn')
+        config_element['role_arn'] = config.get("profile %s" % profile, 'role_arn')
     except configparser.NoSectionError as e:
         print("Profile %s not found in config file." % profile)
         exit(1)
     except configparser.NoOptionError as e:
-        role_arn = None
+        config_element['role_arn'] = None
 
     try:
-        region   = config.get("profile %s" % profile, 'region')
+        config_element['region'] = config.get("profile %s" % profile, 'region')
     except configparser.NoOptionError as e:
-        region = None
+        config_element['region'] = None
     
-    return(role_arn, region)
+    try:
+        config_element['duration_seconds'] = config.get("profile %s" % profile, 'duration_seconds')
+    except configparser.NoOptionError as e:
+        config_element['duration_seconds'] = None
+
+    return(config_element)
+
 
 def create_aws_env_var(profile, region, creds):
     
-    env = {}
+    env = dict()
     env['AWS_ACCESS_KEY_ID']     = creds['AccessKeyId']
     env['AWS_SECRET_ACCESS_KEY'] = creds['SecretAccessKey']
     env['AWS_SESSION_TOKEN']     = creds['SessionToken']
@@ -218,17 +232,20 @@ def main():
     if not is_session_valid(session_creds):
         session_creds = refresh_session(cache_dir + user_cache_file)
 
-    role_arn, region = get_from_profile(profile)
+    profile_config = get_profile_config(profile)
 
 
-    if is_arn_role(role_arn):
-        role_creds = fetch_assume_role_creds(role_arn, session_creds)
+    if is_arn_role(profile_config['role_arn']):
+        role_creds = fetch_assume_role_creds(
+            session_creds,
+            profile_config)
     else:
         role_creds = session_creds['Credentials']
 
-    env = create_aws_env_var(profile, region, role_creds)
+    env = create_aws_env_var(profile, profile_config['region'], role_creds)
 
     run(args, env)
+
 
 if __name__ == '__main__':
     main()
