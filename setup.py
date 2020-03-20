@@ -10,6 +10,7 @@ setup(
     entry_points={
         'console_scripts': [
             'awsudo = awsudo.main:main',
+            'awsudo2 = awsudo2.main:main',,
             'awsrotate = awsudo.rotate:main',
         ],
     },
@@ -17,5 +18,7 @@ setup(
         'boto',
         'retrying',
         'awscli',
+        'boto3',
+        'pytz'
     ],
 )

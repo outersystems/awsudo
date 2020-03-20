@@ -29,7 +29,7 @@ Sets AWS environment variables and then executes the COMMAND.
     exit(1)
 
 
-def parseArgs():
+def parse_args():
     try:
         options, args = getopt.getopt(sys.argv[1:], 'u:')
     except getopt.GetoptError as err:
@@ -203,14 +203,14 @@ def get_profile_config(profile):
     return(config_element)
 
 
-def create_aws_env_var(profile, region, creds):
+def create_aws_env_var(profile, profile_config, creds):
     
     env = dict()
     env['AWS_ACCESS_KEY_ID']     = creds['AccessKeyId']
     env['AWS_SECRET_ACCESS_KEY'] = creds['SecretAccessKey']
     env['AWS_SESSION_TOKEN']     = creds['SessionToken']
     env['AWS_SECURITY_TOKEN']    = creds['SessionToken']
-    env['AWS_DEFAULT_REGION']    = region
+    env['AWS_DEFAULT_REGION']    = profile_config['region']
     env['AWS_PROFILE']           = profile
 
     return(env)
@@ -226,7 +226,7 @@ def is_arn_role(arn):
 
 def main():
 
-    profile, args = parseArgs()
+    profile, args = parse_args()
     clean_env()
 
     session_creds = get_last_session(cache_dir, user_cache_file)
@@ -237,7 +237,6 @@ def main():
 
     profile_config = get_profile_config(profile)
 
-
     if is_arn_role(profile_config['role_arn']):
         role_creds = fetch_assume_role_creds(
             session_creds,
@@ -245,7 +244,7 @@ def main():
     else:
         role_creds = session_creds['Credentials']
 
-    env = create_aws_env_var(profile, profile_config['region'], role_creds)
+    env = create_aws_env_var(profile, profile_config, role_creds)
 
     run(args, env)
 
