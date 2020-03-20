@@ -11,6 +11,7 @@ import botocore
 import getopt
 import sys
 import configparser
+import getpass
 
 aws_config_file = "~/.aws/config"
 cache_dir = "~/.aws/awsudo/cache/"
@@ -71,17 +72,12 @@ def run(args, extraEnv):
         raise SystemExit("%s: command not found" % (args[0],))
 
 
-def fetch_user_token():
+def fetch_user_token(profile_config):
     """Query AWS to get temporary credentials of a user with an MFA."""
 
-    config = configparser.ConfigParser()
-    config.read([os.path.expanduser(aws_config_file)])
-    
-    duration_string = config.get("profile default", 'duration_seconds')
-    durationSeconds = int(duration_string)
+    durationSeconds = int(profile_config['duration_seconds'])
 
-    # Using the mfa_serial from the profile named default
-    mfaSerial = config.get("profile default", 'mfa_serial')
+    mfaSerial = profile_config['mfa_serial']
 
     sts = boto3.client('sts')
 
@@ -92,7 +88,10 @@ def fetch_user_token():
         exit(1)
 
     try:
-        return sts.get_session_token(DurationSeconds=durationSeconds, SerialNumber=mfaSerial, TokenCode=mfaToken)
+        return sts.get_session_token(
+            DurationSeconds=durationSeconds,
+            SerialNumber=mfaSerial,
+            TokenCode=mfaToken)
     except botocore.exceptions.ClientError as e:
         print ("Error to get session token. MFA Errorneous?")
         exit(1)
@@ -137,9 +136,9 @@ def is_session_valid(session_creds):
     return False
 
 
-def refresh_session(filename):
+def refresh_session(filename, profile_config):
     """Refresh credentials and cache them."""
-    session_creds = fetch_user_token()
+    session_creds = fetch_user_token(profile_config)
 
     with open(os.path.expanduser(filename), "w+") as json_file:
         json.dump(session_creds, json_file, indent=2, sort_keys=True, default=str)
@@ -153,8 +152,6 @@ def fetch_assume_role_creds(user_session_token, profile_config):
     config = configparser.ConfigParser()
     config.read([os.path.expanduser(aws_config_file)])
     
-    duration_string = config.get("profile default", 'duration_seconds')
-
     sts = boto3.client('sts',
         aws_access_key_id=user_session_token['Credentials']['AccessKeyId'],
         aws_secret_access_key=user_session_token['Credentials']['SecretAccessKey'],
@@ -198,6 +195,11 @@ def get_profile_config(profile):
     except configparser.NoOptionError as e:
         config_element['duration_seconds'] = None
 
+    try:
+        config_element['mfa_serial'] = config.get("profile %s" % profile, 'mfa_serial')
+    except configparser.NoOptionError as e:
+        config_element['mfa_serial'] = None
+
     return(config_element)
 
 
@@ -230,7 +232,8 @@ def main():
     session_creds = get_last_session(cache_dir, user_cache_file)
     
     if not is_session_valid(session_creds):
-        session_creds = refresh_session(cache_dir + user_cache_file)
+        profile_config = get_profile_config("default")
+        session_creds = refresh_session(cache_dir + user_cache_file, profile_config)
 
     profile_config = get_profile_config(profile)
 
