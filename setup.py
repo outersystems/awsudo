@@ -14,11 +14,4 @@ setup(
             'awsrotate = awsudo.rotate:main',
         ],
     },
-    install_requires=[
-        'botocore',
-        'retrying',
-        'awscli',
-        'boto3',
-        'pytz'
-    ],
 )
