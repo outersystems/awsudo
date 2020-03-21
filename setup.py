@@ -15,7 +15,7 @@ setup(
         ],
     },
     install_requires=[
-        'boto',
+        'botocore',
         'retrying',
         'awscli',
         'boto3',
