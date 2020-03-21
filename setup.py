@@ -14,4 +14,11 @@ setup(
             'awsrotate = awsudo.rotate:main',
         ],
     },
+    install_requires=[
+        'boto',
+        'retrying',
+        'awscli',
+        'pytz==2019.3',
+        'boto3==1.12.21'
+    ],
 )

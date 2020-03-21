@@ -64,6 +64,7 @@ def clean_env():
 def run(args, extraEnv):
     env = os.environ.copy()
     env.update(extraEnv)
+
     try:
         os.execvpe(args[0], args, env)
     except OSError as e:
@@ -78,22 +79,20 @@ def fetch_user_token(profile_config):
     durationSeconds = int(profile_config['duration_seconds'])
 
     mfaSerial = profile_config['mfa_serial']
-
-    sts = boto3.client('sts')
-
     try:
         mfaToken = getpass.getpass(prompt="Enter MFA token: ")
     except KeyboardInterrupt as e:
         print(e)
         exit(1)
 
+    sts = boto3.client('sts')
     try:
         return sts.get_session_token(
             DurationSeconds=durationSeconds,
             SerialNumber=mfaSerial,
             TokenCode=mfaToken)
-    except botocore.exceptions.ClientError as e:
-        print ("Error to get session token. MFA Errorneous?")
+    except Exception as e:
+        print(e)
         exit(1)
 
 
@@ -119,7 +118,7 @@ def get_last_session(cache_dir, cache_file):
         session_creds = {}
         with open(cache_dir_path + cache_file, "w+") as json_file:
             json.dump(session_creds, json_file)
-    
+
     return session_creds
 
 
@@ -129,7 +128,7 @@ def is_session_valid(session_creds):
         expiration_utc = dateutil.parser.isoparse(session_creds['Credentials']['Expiration'])
         now_utc = pytz.utc.localize(datetime.datetime.utcnow())
         max_accepted_timedelta = datetime.timedelta(hours=1)
-        
+
         if (expiration_utc - now_utc) > max_accepted_timedelta:
             return True
 
@@ -151,7 +150,7 @@ def fetch_assume_role_creds(user_session_token, profile_config):
 
     config = configparser.ConfigParser()
     config.read([os.path.expanduser(aws_config_file)])
-    
+
     sts = boto3.client('sts',
         aws_access_key_id=user_session_token['Credentials']['AccessKeyId'],
         aws_secret_access_key=user_session_token['Credentials']['SecretAccessKey'],
@@ -163,10 +162,14 @@ def fetch_assume_role_creds(user_session_token, profile_config):
     else:
         duration = 3600
 
-    role_session = sts.assume_role(
-        RoleArn=profile_config['role_arn'],
-        RoleSessionName="awsudo",
-        DurationSeconds=duration)
+    try:
+        role_session = sts.assume_role(
+            RoleArn=profile_config['role_arn'],
+            RoleSessionName="awsudo",
+            DurationSeconds=duration)
+    except Exception as e:
+        print(e)
+        exit(1)
 
     return(role_session['Credentials'])
 
@@ -175,7 +178,7 @@ def get_profile_config(profile):
 
     config = configparser.ConfigParser()
     config.read([os.path.expanduser(aws_config_file)])
-    
+
     config_element = dict()
     try:
         config_element['role_arn'] = config.get("profile %s" % profile, 'role_arn')
@@ -189,7 +192,7 @@ def get_profile_config(profile):
         config_element['region'] = config.get("profile %s" % profile, 'region')
     except configparser.NoOptionError as e:
         config_element['region'] = None
-    
+
     try:
         config_element['duration_seconds'] = config.get("profile %s" % profile, 'duration_seconds')
     except configparser.NoOptionError as e:
@@ -204,14 +207,18 @@ def get_profile_config(profile):
 
 
 def create_aws_env_var(profile, profile_config, creds):
-    
+
     env = dict()
-    env['AWS_ACCESS_KEY_ID']     = creds['AccessKeyId']
+    env['AWS_ACCESS_KEY_ID'] = creds['AccessKeyId']
     env['AWS_SECRET_ACCESS_KEY'] = creds['SecretAccessKey']
-    env['AWS_SESSION_TOKEN']     = creds['SessionToken']
-    env['AWS_SECURITY_TOKEN']    = creds['SessionToken']
-    env['AWS_DEFAULT_REGION']    = profile_config['region']
-    env['AWS_PROFILE']           = profile
+    env['AWS_SESSION_TOKEN'] = creds['SessionToken']
+    env['AWS_SECURITY_TOKEN'] = creds['SessionToken']
+    env['AWS_PROFILE'] = profile
+
+    if profile_config['region']:
+        env['AWS_DEFAULT_REGION'] = profile_config['region']
+    else:
+        env['AWS_DEFAULT_REGION'] = ""
 
     return(env)
 
@@ -221,7 +228,7 @@ def is_arn_role(arn):
     if arn:
         pattern = re.compile(":role/")
         return(pattern.search(arn))
-    
+
     return False
 
 def main():
@@ -230,7 +237,7 @@ def main():
     clean_env()
 
     session_creds = get_last_session(cache_dir, user_cache_file)
-    
+
     if not is_session_valid(session_creds):
         profile_config = get_profile_config("default")
         session_creds = refresh_session(cache_dir + user_cache_file, profile_config)
@@ -251,3 +258,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
