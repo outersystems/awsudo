@@ -202,7 +202,7 @@ def get_profile_config(profile):
         config_element['mfa_serial'] = None
 
     try:
-        config_element['source_profile = config.get("profile %s" % name, 'source_profile')
+        config_element['source_profile'] = config.get("profile %s" % name, 'source_profile')
     except configparser.NoOptionError as e:
         config_element['source_profile'] = None
 
