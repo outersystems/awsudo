@@ -84,7 +84,7 @@ def fetch_user_token(profile_config):
 
     mfaSerial = profile_config['mfa_serial']
     try:
-        mfaToken = getpass.getpass(prompt="Enter MFA token: ")
+        mfaToken = getpass.getpass(prompt="Enter MFA code of device %s: " % mfaSerial)
     except KeyboardInterrupt as e:
         print(e)
         exit(1)
