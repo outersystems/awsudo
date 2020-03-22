@@ -12,10 +12,10 @@ import getopt
 import sys
 import configparser
 import getpass
+import re
 
 aws_config_file = "~/.aws/config"
-cache_dir = "~/.aws/awsudo/cache/"
-user_cache_file = "user.session.json"
+
 
 def usage():
     sys.stderr.write('''\
@@ -144,7 +144,6 @@ def refresh_session(filename, profile_config):
 
 
 def fetch_assume_role_creds(user_session_token, profile_config):
-    import configparser
 
     config = configparser.ConfigParser()
     config.read([os.path.expanduser(aws_config_file)])
@@ -206,7 +205,7 @@ def get_profile_config(profile):
 
     try:
         config_element['source_profile'] = config.get("profile %s" % profile, 'source_profile')
-    except configparser.NoOptionError as e:
+    except configparser.NoOptionError:
         config_element['source_profile'] = None
 
     if config_element['source_profile']:
@@ -235,7 +234,6 @@ def create_aws_env_var(profile_config, creds):
     return(env)
 
 def is_arn_role(arn):
-    import re
 
     if arn:
         pattern = re.compile(":role/")
@@ -245,14 +243,17 @@ def is_arn_role(arn):
 
 def main():
 
+    cache_dir = "~/.aws/awsudo/cache/"
+    cache_file = "user.session.json"
+
     profile, args = parse_args()
     clean_env()
 
-    session_creds = get_cached_session(cache_dir, user_cache_file)
+    session_creds = get_cached_session(cache_dir, cache_file)
 
     if not is_session_valid(session_creds):
         profile_config = get_profile_config("default")
-        session_creds = refresh_session(cache_dir + user_cache_file, profile_config)
+        session_creds = refresh_session(cache_dir + cache_file, profile_config)
 
     profile_config = get_profile_config(profile)
 
