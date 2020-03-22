@@ -218,12 +218,13 @@ def create_aws_env_var(profile, profile_config, creds):
     env['AWS_SECURITY_TOKEN'] = creds['SessionToken']
     env['AWS_PROFILE'] = profile
 
+    env['AWS_DEFAULT_REGION'] = ""
     if profile_config['region']:
         env['AWS_DEFAULT_REGION'] = profile_config['region']
-    elif profile_config['source']['region']:
-        env['AWS_DEFAULT_REGION'] = profile_config['source']['region']
     else:
-        env['AWS_DEFAULT_REGION'] = ""
+        if profile_config['source_profile']:
+            if profile_config['source_profile']['region']:
+                env['AWS_DEFAULT_REGION'] = profile_config['source_profile']['region']    
 
     return(env)
 
