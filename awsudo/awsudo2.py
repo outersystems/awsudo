@@ -62,6 +62,10 @@ def clean_env():
 
 
 def run(args, extraEnv):
+    """Run the of args with the given env.
+
+    The role of awsudo, like sudo, is to run what is given after its options.
+    The first arg is the command to run, the rest of the args are its options and arguments."""
     env = os.environ.copy()
     env.update(extraEnv)
 
@@ -74,7 +78,7 @@ def run(args, extraEnv):
 
 
 def fetch_user_token(profile_config):
-    """Query AWS to get temporary credentials of a user with an MFA."""
+    """Fetch temporary credentials of a user with an MFA."""
 
     durationSeconds = int(profile_config['duration_seconds'])
 
@@ -95,15 +99,10 @@ def fetch_user_token(profile_config):
         print(e)
         exit(1)
 
-
-def fetch_role_session_token():
-    """Query AWS to get temporary credentials for a role, derived from user session token."""
-    print ("stuff")
-
-
-def get_last_session(cache_dir, cache_file):
+def get_cached_session(cache_dir, cache_file):
     """Return the current session from cache_dir/cache_file.
-    Could be {} if no file found"""
+    
+    It could be {} if no file found."""
     cache_dir_path = os.path.expanduser(cache_dir)
     pathlib.Path(cache_dir_path).mkdir(parents=True, exist_ok=True)
     # Load session creds
@@ -123,7 +122,8 @@ def get_last_session(cache_dir, cache_file):
 
 
 def is_session_valid(session_creds):
-    """Check if a session is still valid, based on its expiration date"""
+    """Check if a session is still valid, based on its expiration date."""
+
     if 'Credentials' in session_creds.keys():
         expiration_utc = dateutil.parser.isoparse(session_creds['Credentials']['Expiration'])
         now_utc = pytz.utc.localize(datetime.datetime.utcnow())
@@ -137,6 +137,7 @@ def is_session_valid(session_creds):
 
 def refresh_session(filename, profile_config):
     """Refresh credentials and cache them."""
+
     session_creds = fetch_user_token(profile_config)
 
     with open(os.path.expanduser(filename), "w+") as json_file:
@@ -182,25 +183,25 @@ def get_profile_config(profile):
     config_element = dict()
     try:
         config_element['role_arn'] = config.get("profile %s" % profile, 'role_arn')
-    except configparser.NoSectionError as e:
+    except configparser.NoSectionError:
         print("Profile %s not found in config file." % profile)
         exit(1)
-    except configparser.NoOptionError as e:
+    except configparser.NoOptionError:
         config_element['role_arn'] = None
 
     try:
         config_element['region'] = config.get("profile %s" % profile, 'region')
-    except configparser.NoOptionError as e:
+    except configparser.NoOptionError:
         config_element['region'] = None
 
     try:
         config_element['duration_seconds'] = config.get("profile %s" % profile, 'duration_seconds')
-    except configparser.NoOptionError as e:
+    except configparser.NoOptionError:
         config_element['duration_seconds'] = None
 
     try:
         config_element['mfa_serial'] = config.get("profile %s" % profile, 'mfa_serial')
-    except configparser.NoOptionError as e:
+    except configparser.NoOptionError:
         config_element['mfa_serial'] = None
 
     return(config_element)
@@ -236,7 +237,7 @@ def main():
     profile, args = parse_args()
     clean_env()
 
-    session_creds = get_last_session(cache_dir, user_cache_file)
+    session_creds = get_cached_session(cache_dir, user_cache_file)
 
     if not is_session_valid(session_creds):
         profile_config = get_profile_config("default")
