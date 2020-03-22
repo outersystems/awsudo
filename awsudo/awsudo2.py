@@ -17,9 +17,6 @@ aws_config_file = "~/.aws/config"
 cache_dir = "~/.aws/awsudo/cache/"
 user_cache_file = "user.session.json"
 
-# import awsudo.main
-# awsudo.main.main()
-
 def usage():
     sys.stderr.write('''\
 Usage: awsudo [-u USER] [--] COMMAND [ARGS] [...]
@@ -204,6 +201,14 @@ def get_profile_config(profile):
     except configparser.NoOptionError:
         config_element['mfa_serial'] = None
 
+    try:
+        config_element['source_profile = config.get("profile %s" % name, 'source_profile')
+    except configparser.NoOptionError as e:
+        config_element['source_profile'] = None
+
+    if config_element['source_profile']
+        config_element['source'] = Profile(config_element['source_profile'])
+
     return(config_element)
 
 
@@ -218,6 +223,8 @@ def create_aws_env_var(profile, profile_config, creds):
 
     if profile_config['region']:
         env['AWS_DEFAULT_REGION'] = profile_config['region']
+    elif: profile_config['source']['region']
+        env['AWS_DEFAULT_REGION'] = profile_config['source']['region']
     else:
         env['AWS_DEFAULT_REGION'] = ""
 
