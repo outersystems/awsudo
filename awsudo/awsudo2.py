@@ -98,7 +98,7 @@ def fetch_user_token(profile_config):
 
 def get_cached_session(cache_dir, cache_file):
     """Return the current session from cache_dir/cache_file.
-    
+
     It could be {} if no file found."""
     cache_dir_path = os.path.expanduser(cache_dir)
     pathlib.Path(cache_dir_path).mkdir(parents=True, exist_ok=True)
@@ -178,6 +178,9 @@ def get_profile_config(profile):
     config.read([os.path.expanduser(aws_config_file)])
 
     config_element = dict()
+
+    config_element['profile'] = profile
+
     try:
         config_element['role_arn'] = config.get("profile %s" % profile, 'role_arn')
     except configparser.NoSectionError:
@@ -206,25 +209,28 @@ def get_profile_config(profile):
     except configparser.NoOptionError as e:
         config_element['source_profile'] = None
 
+    if config_element['source_profile']:
+        config_element['source'] = get_profile_config(config_element['source_profile'])
+
     return(config_element)
 
 
-def create_aws_env_var(profile, profile_config, creds):
+def create_aws_env_var(profile_config, creds):
 
     env = dict()
     env['AWS_ACCESS_KEY_ID'] = creds['AccessKeyId']
     env['AWS_SECRET_ACCESS_KEY'] = creds['SecretAccessKey']
     env['AWS_SESSION_TOKEN'] = creds['SessionToken']
     env['AWS_SECURITY_TOKEN'] = creds['SessionToken']
-    env['AWS_PROFILE'] = profile
+    env['AWS_PROFILE'] = profile_config['profile']
 
     env['AWS_DEFAULT_REGION'] = ""
     if profile_config['region']:
         env['AWS_DEFAULT_REGION'] = profile_config['region']
     else:
-        if profile_config['source_profile']:
-            if profile_config['source_profile']['region']:
-                env['AWS_DEFAULT_REGION'] = profile_config['source_profile']['region']    
+        if profile_config['source']:
+            if profile_config['source']['region']:
+                env['AWS_DEFAULT_REGION'] = profile_config['source']['region']
 
     return(env)
 
@@ -257,7 +263,7 @@ def main():
     else:
         role_creds = session_creds['Credentials']
 
-    env = create_aws_env_var(profile, profile_config, role_creds)
+    env = create_aws_env_var(profile_config, role_creds)
 
     run(args, env)
 
