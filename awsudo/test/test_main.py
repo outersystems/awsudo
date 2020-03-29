@@ -16,6 +16,45 @@ def test_no_args(capsys, monkeypatch):
     assert 'Usage:' in err
 
 
+def test_only_option(capsys, monkeypatch):
+    '''With only options, awsudo exits with usage.'''
+    monkeypatch.setattr(sys, 'argv', ['awsudo', '-u', 'default'])
+
+    with pytest.raises(SystemExit):
+        main.main()
+
+    out, err = capsys.readouterr()
+    assert 'Usage:' in err
+
+
+def test_parseArgs_env_profile(monkeypatch):
+    '''Env vars is taken if no option are given.'''
+    environ = {
+        'AWS_PROFILE': 'profile'
+    }
+    monkeypatch.setattr(os, 'environ', environ)
+    monkeypatch.setattr(sys, 'argv', ['awsudo', 'command'])
+
+    profile, args = main.parseArgs()
+
+    assert profile == 'profile'
+    assert args == ['command']
+
+
+def test_parseArgs_option_over_environ(monkeypatch):
+    '''Options values are taken even if environment variables are set.'''
+    environ = {
+        'AWS_PROFILE': 'profile-environ'
+    }
+    monkeypatch.setattr(os, 'environ', environ)
+    monkeypatch.setattr(sys, 'argv', ['awsudo', '-u', 'profile-option', 'command'])
+
+    profile, args = main.parseArgs()
+
+    assert profile == 'profile-option'
+    assert args == ['command']
+
+
 def test_cleanEnvironment(monkeypatch):
     '''cleanEnvironment strips AWS and boto configuration.'''
     environ = {
